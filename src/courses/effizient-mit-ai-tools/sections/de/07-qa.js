@@ -137,7 +137,7 @@ export const qaSlides = [
             <a href="https://opencode.ai/docs/de/skills/" target="_blank" rel="noopener" style="color:var(--color-text-on-dark-subdued);text-decoration:none">OpenCode Skills-Doku</a>
           </div>
           <div style="margin-top:14px;padding:10px 12px;border-radius:8px;background:rgba(255,237,0,0.06);border:1px solid rgba(255,237,0,0.15)">
-            <p style="font-size:0.72rem;color:var(--color-text-on-dark-subdued);line-height:1.6">Dieser Kurs ist &ouml;ffentlich &amp; reproduzierbar (Apache 2.0) &ndash; Feedback und Erg&auml;nzungen gerne in die CoP. Danke! &#128591;<br>Kurs &amp; Plattform: <a href="https://github.com/weisser-dev" target="_blank" rel="noopener" style="color:var(--color-accent);text-decoration:underline">github.com/weisser-dev</a></p>
+            <p style="font-size:0.72rem;color:var(--color-text-on-dark-subdued);line-height:1.6">Dieser Kurs ist &ouml;ffentlich &amp; reproduzierbar (Apache 2.0) &ndash; Feedback und Erg&auml;nzungen gerne in die CoP. Danke! &#128591;<br>Kurs &amp; Plattform: <a href="https://github.com/HUK-COBURG/agentic-ai-workshops" target="_blank" rel="noopener" style="color:var(--color-accent);text-decoration:underline">github.com/HUK-COBURG/agentic-ai-workshops</a></p>
           </div>
         </div>
       </div>

@@ -336,12 +336,12 @@ function updateActiveSlide(index) {
   const isWerbung = slides[index]?.id === 'setup-keys';
   document.body.classList.toggle('slide-werbung', isWerbung);
 
-  // Show language selector + home link only on first/hero slide
+  // Language selector only on first/hero slide; home link always (except presenter mode)
   const isHeroSlide = (slides[index]?.id === 'hero' || index === 0) && !presenterMode;
   const langSel = document.getElementById('lang-selector');
   if (langSel) langSel.classList.toggle('hidden', !isHeroSlide);
   const homeEl = document.getElementById('home-link');
-  if (homeEl) homeEl.classList.toggle('hidden', !isHeroSlide);
+  if (homeEl) homeEl.classList.toggle('hidden', presenterMode);
 
   // Slide timers (handout + discussion)
   handlePauseTimer(slides[index]?.id === 'handout');
@@ -1686,6 +1686,8 @@ function setPresenterMode(enabled) {
   presenterMode = enabled;
   document.body.classList.toggle('presenter-mode', enabled);
   document.body.classList.toggle('self-paced-mode', !enabled);
+  const homeEl = document.getElementById('home-link');
+  if (homeEl) homeEl.classList.toggle('hidden', enabled);
   // Update URL without reload
   const url = new URL(window.location);
   if (enabled) {
