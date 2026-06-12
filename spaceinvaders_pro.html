@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Space Invaders</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        
+        #game-container {
+            position: relative;
+            border: 2px solid #00ff00;
+        }
+        
+        canvas {
+            background-color: #000;
+            display: block;
+        }
+        
+        #start-screen, #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #00ff00;
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+        
+        #game-over-screen {
+            display: none;
+        }
+        
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            text-shadow: 0 0 10px #00ff00;
+        }
+        
+        p {
+            font-size: 1.2rem;
+            margin: 0.5rem 0;
+        }
+        
+        button {
+            background-color: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1.2rem;
+            font-family: 'Courier New', monospace;
+            margin-top: 20px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        button:hover {
+            background-color: #00cc00;
+        }
+        
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        <div id="start-screen">
+            <h1>SPACE INVADERS</h1>
+            <p>USE ARROW KEYS OR A/D TO MOVE</p>
+            <p>SPACEBAR TO SHOOT</p>
+            <p>ESC TO PAUSE</p>
+            <button id="start-button">START GAME</button>
+        </div>
+        <div id="game-over-screen">
+            <h1>GAME OVER</h1>
+            <p>SCORE: <span id="final-score">0</span></p>
+            <p>HIGH SCORE: <span id="high-score">0</span></p>
+            <button id="restart-button">PLAY AGAIN</button>
+        </div>
+        <div id="hud">
+            <p>SCORE: <span id="score">0</span></p>
+            <p>LIVES: <span id="lives">3</span></p>
+            <p>LEVEL: <span id="level">1</span></p>
+        </div>
+    </div>
+
+    <script>
+        // Configuration object
+        const CONFIG = {
+            CANVAS_WIDTH: 800,
+            CANVAS_HEIGHT: 600,
+            PLAYER_SPEED: 5,
+            ENEMY_SPEED: 1,
+            PROJECTILE_SPEED: 7,
+            ENEMY_PROJECTILE_SPEED: 4,
+            PLAYER_COOLDOWN: 200,
+            ENEMY_SHOOT_CHANCE: 0.005,
+            ENEMY_MOVE_DOWN_DISTANCE: 20,
+            ENEMY_ROWS: 5,
+            ENEMY_COLS: 10,
+            SHIELD_COUNT: 4,
+            SHIELD_WIDTH: 80,
+            SHIELD_HEIGHT: 40,
+            SHIELD_GAP: 20,
+            ENEMY_SIZE: 30,
+            PLAYER_SIZE: 30,
+            PROJECTILE_SIZE: 4,
+            SHIELD_HEALTH: 3
+        };
+
+        // Game states
+        const GAME_STATE = {
+            START: 0,
+            PLAYING: 1,
+            PAUSED: 2,
+            GAME_OVER: 3
+        };
+
+        // Input handler class
+        /**
+         * Handles keyboard and touch input for the game
+         */
+        class InputHandler {
+            constructor() {
+                this.keys = {};
+                this.touchLeft = false;
+                this.touchRight = false;
+                this.touchShoot = false;
+                
+                this.init();
+            }
+
+            /**
+             * Initialize event listeners for input
+             */
+            init() {
+                // Keyboard input
+                document.addEventListener('keydown', (e) => {
+                    this.keys[e.key] = true;
+                });
+                
+                document.addEventListener('keyup', (e) => {
+                    this.keys[e.key] = false;
+                });
+                
+                // Touch input for mobile
+                let touchStartX = 0;
+                let touchStartY = 0;
+                
+                document.addEventListener('touchstart', (e) => {
+                    touchStartX = e.touches[0].clientX;
+                    touchStartY = e.touches[0].clientY;
+                    
+                    // Determine which zone was touched
+                    const container = document.getElementById('game-container');
+                    const rect = container.getBoundingClientRect();
+                    const halfWidth = rect.width / 2;
+                    
+                    if (touchStartX < rect.left + halfWidth) {
+                        this.touchLeft = true;
+                    } else {
+                        this.touchRight = true;
+                    }
+                });
+                
+                document.addEventListener('touchmove', (e) => {
+                    // Prevent scrolling
+                    e.preventDefault();
+                    
+                    const touchX = e.touches[0].clientX;
+                    
+                    // Determine if we're still in the same zone
+                    const container = document.getElementById('game-container');
+                    const rect = container.getBoundingClientRect();
+                    const halfWidth = rect.width / 2;
+                    
+                    if (touchX < rect.left + halfWidth) {
+                        this.touchLeft = true;
+                        this.touchRight = false;
+                    } else {
+                        this.touchRight = true;
+                        this.touchLeft = false;
+                    }
+                });
+                
+                document.addEventListener('touchend', (e) => {
+                    this.touchLeft = false;
+                    this.touchRight = false;
+                    this.touchShoot = false;
+                });
+                
+                // Click shoot for desktop
+                document.addEventListener('click', (e) => {
+                    this.touchShoot = true;
+                    setTimeout(() => {
+                        this.touchShoot = false;
+                    }, 100);
+                });
+            }
+
+            /**
+             * Returns whether left movement is active
+             */
+            isLeftPressed() {
+                return this.keys['ArrowLeft'] || this.keys['a'] || this.keys['A'] || this.touchLeft;
+            }
+
+            /**
+             * Returns whether right movement is active
+             */
+            isRightPressed() {
+                return this.keys['ArrowRight'] || this.keys['d'] || this.keys['D'] || this.touchRight;
+            }
+
+            /**
+             * Returns whether shooting is active
+             */
+            isShootPressed() {
+                return this.keys[' '] || this.touchShoot;
+            }
+
+            /**
+             * Returns whether pause is active
+             */
+            isPausePressed() {
+                return this.keys['Escape'] || this.keys['p'] || this.keys['P'];
+            }
+        }
+
+        // Game renderer class
+        /**
+         * Handles rendering all game elements on the canvas
+         */
+        class Renderer {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+            }
+
+            /**
+             * Clears the canvas
+             */
+            clear() {
+                this.ctx.fillStyle = '#000';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            }
+
+            /**
+             * Draws a rectangle with outline
+             */
+            drawRectangle(x, y, width, height, fill, stroke = '#00ff00') {
+                // Fill
+                this.ctx.fillStyle = fill;
+                this.ctx.fillRect(x, y, width, height);
+                
+                // Outline
+                this.ctx.strokeStyle = stroke;
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeRect(x, y, width, height);
+            }
+
+            /**
+             * Draws a player ship
+             */
+            drawPlayer(x, y) {
+                this.ctx.fillStyle = '#00ff00';
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, y);
+                this.ctx.lineTo(x - 15, y + 30);
+                this.ctx.lineTo(x + 15, y + 30);
+                this.ctx.closePath();
+                this.ctx.fill();
+            }
+
+            /**
+             * Draws an enemy
+             */
+            drawEnemy(x, y, row) {
+                const colors = ['#ff0000', '#ff8000', '#ffff00', '#00ffff', '#ff00ff'];
+                this.ctx.fillStyle = colors[row % colors.length];
+                
+                // Draw enemy body
+                this.ctx.beginPath();
+                this.ctx.arc(x, y, CONFIG.ENEMY_SIZE / 2, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                // Draw enemy details
+                this.ctx.fillStyle = '#000';
+                this.ctx.beginPath();
+                this.ctx.arc(x - 6, y - 5, 3, 0, Math.PI * 2);
+                this.ctx.arc(x + 6, y - 5, 3, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                this.ctx.beginPath();
+                this.ctx.arc(x, y + 5, 5, 0, Math.PI);
+                this.ctx.strokeStyle = '#000';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+            }
+
+            /**
+             * Draws a projectile
+             */
+            drawProjectile(x, y) {
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillRect(x, y, CONFIG.PROJECTILE_SIZE, 10);
+            }
+
+            /**
+             * Draws a shield
+             */
+            drawShield(x, y, health) {
+                // Shield shape that looks like a polygon
+                const points = [
+                    {x: x - CONFIG.SHIELD_WIDTH / 2, y: y + CONFIG.SHIELD_HEIGHT / 2},
+                    {x: x - CONFIG.SHIELD_WIDTH / 4, y: y - CONFIG.SHIELD_HEIGHT / 2},
+                    {x: x + CONFIG.SHIELD_WIDTH / 4, y: y - CONFIG.SHIELD_HEIGHT / 2},
+                    {x: x + CONFIG.SHIELD_WIDTH / 2, y: y + CONFIG.SHIELD_HEIGHT / 2}
+                ];
+                
+                this.ctx.fillStyle = health > 0 ? '#00ffff' : '#333';
+                this.ctx.beginPath();
+                this.ctx.moveTo(points[0].x, points[0].y);
+                for (let i = 1; i < points.length; i++) {
+                    this.ctx.lineTo(points[i].x, points[i].y);
+                }
+                this.ctx.closePath();
+                this.ctx.fill();
+                
+                if (health > 0) {
+                    this.ctx.strokeStyle = '#00ff00';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.stroke();
+                }
+            }
+
+            /**
+             * Draws game over screen
+             */
+            drawGameOver(score, highScore) {
+                document.getElementById('final-score').textContent = score;
+                document.getElementById('high-score').textContent = highScore;
+                document.getElementById('game-over-screen').style.display = 'flex';
+            }
+
+            /**
+             * Draws start screen
+             */
+            drawStartScreen() {
+                document.getElementById('start-screen').style.display = 'flex';
+            }
+
+            /**
+             * Updates HUD displays
+             */
+            updateHUD(score, lives, level) {
+                document.getElementById('score').textContent = score;
+                document.getElementById('lives').textContent = lives;
+                document.getElementById('level').textContent = level;
+            }
+        }
+
+        // Player class
+        /**
+         * Represents the player's spaceship
+         */
+        class Player {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = CONFIG.PLAYER_SIZE;
+                this.height = CONFIG.PLAYER_SIZE;
+                this.speed = CONFIG.PLAYER_SPEED;
+                this.lastShotTime = 0;
+            }
+
+            /**
+             * Moves the player horizontally
+             */
+            move(direction) {
+                if (direction === 'left') {
+                    this.x = Math.max(this.width / 2, this.x - this.speed);
+                } else if (direction === 'right') {
+                    this.x = Math.min(CONFIG.CANVAS_WIDTH - this.width / 2, this.x + this.speed);
+                }
+            }
+
+            /**
+             * Fires a projectile if cooldown has passed
+             */
+            shoot(currentTime) {
+                if (currentTime - this.lastShotTime > CONFIG.PLAYER_COOLDOWN) {
+                    this.lastShotTime = currentTime;
+                    return new Projectile(this.x, this.y - this.height / 2, CONFIG.PROJECTILE_SPEED, 'player');
+                }
+                return null;
+            }
+        }
+
+        // Enemy class
+        /**
+         * Represents an enemy spaceship
+         */
+        class Enemy {
+            constructor(x, y, row) {
+                this.x = x;
+                this.y = y;
+                this.row = row;
+                this.width = CONFIG.ENEMY_SIZE;
+                this.height = CONFIG.ENEMY_SIZE;
+                this.alive = true;
+            }
+
+            /**
+             * Renders the enemy on the canvas
+             */
+            render(renderer) {
+                if (this.alive) {
+                    renderer.drawEnemy(this.x, this.y, this.row);
+                }
+            }
+        }
+
+        // EnemyGrid class
+        /**
+         * Manages the arrangement of enemies in a grid formation
+         */
+        class EnemyGrid {
+            constructor() {
+                this.enemies = [];
+                this.columns = CONFIG.ENEMY_COLS;
+                this.rows = CONFIG.ENEMY_ROWS;
+                this.gridWidth = this.columns * (CONFIG.ENEMY_SIZE + 10);
+                this.gridHeight = this.rows * (CONFIG.ENEMY_SIZE + 15);
+                this.x = (CONFIG.CANVAS_WIDTH - this.gridWidth) / 2;
+                this.y = 50;
+                this.moveDirection = 1; // 1 for right, -1 for left
+                this.moveDownDistance = 0;
+                this.enemySpeed = CONFIG.ENEMY_SPEED;
+                this.lastMoveTime = 0;
+                this.moveInterval = 300; // milliseconds between moves
+                
+                this.createEnemies();
+            }
+
+            /**
+             * Creates the grid of enemies
+             */
+            createEnemies() {
+                for (let row = 0; row < this.rows; row++) {
+                    for (let col = 0; col < this.columns; col++) {
+                        const enemyX = this.x + col * (CONFIG.ENEMY_SIZE + 10) + CONFIG.ENEMY_SIZE / 2;
+                        const enemyY = this.y + row * (CONFIG.ENEMY_SIZE + 15) + CONFIG.ENEMY_SIZE / 2;
+                        
+                        this.enemies.push(new Enemy(enemyX, enemyY, row));
+                    }
+                }
+            }
+
+            /**
+             * Updates enemy positions
+             */
+            update(deltaTime) {
+                const currentTime = Date.now();
+                
+                if (currentTime - this.lastMoveTime > this.moveInterval) {
+                    this.lastMoveTime = currentTime;
+                    
+                    // Move enemy grid
+                    if (this.moveDirection === 1) {
+                        this.x += this.enemySpeed;
+                    } else {
+                        this.x -= this.enemySpeed;
+                    }
+                    
+                    this.moveDownDistance += this.enemySpeed;
+                    
+                    // Check if enemy needs to move down
+                    let shouldMoveDown = false;
+                    
+                    // Check right boundary
+                    let rightMost = 0;
+                    for (const enemy of this.enemies) {
+                        if (enemy.alive && enemy.x > rightMost) {
+                            rightMost = enemy.x;
+                        }
+                    }
+                    
+                    if (rightMost + CONFIG.ENEMY_SIZE / 2 >= CONFIG.CANVAS_WIDTH) {
+                        shouldMoveDown = true;
+                    }
+                    
+                    // Check left boundary
+                    let leftMost = CONFIG.CANVAS_WIDTH;
+                    for (const enemy of this.enemies) {
+                        if (enemy.alive && enemy.x < leftMost) {
+                            leftMost = enemy.x;
+                        }
+                    }
+                    
+                    if (leftMost - CONFIG.ENEMY_SIZE / 2 <= 0) {
+                        shouldMoveDown = true;
+                    }
+                    
+                    if (shouldMoveDown) {
+                        this.moveDirection *= -1;
+                        this.y += CONFIG.ENEMY_MOVE_DOWN_DISTANCE;
+                        this.moveDownDistance = 0;
+                    }
+                }
+            }
+
+            /**
+             * Renders all enemies in the grid
+             */
+            render(renderer) {
+                for (const enemy of this.enemies) {
+                    enemy.render(renderer);
+                }
+            }
+
+            /**
+             * Checks if any alive enemy is at the bottom
+             */
+            hasReachedBottom() {
+                for (const enemy of this.enemies) {
+                    if (enemy.alive && enemy.y + enemy.height / 2 >= CONFIG.CANVAS_HEIGHT - 200) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            /**
+             * Counts remaining alive enemies
+             */
+            countAliveEnemies() {
+                let count = 0;
+                for (const enemy of this.enemies) {
+                    if (enemy.alive) {
+                        count++;
+                    }
+                }
+                return count;
+            }
+
+            /**
+             * Calculates the speed based on remaining enemies
+             */
+            calculateSpeed() {
+                const percentage = this.countAliveEnemies() / (this.rows * this.columns);
+                this.enemySpeed = CONFIG.ENEMY_SPEED + (1 - percentage) * 3;
+            }
+
+            /**
+             * Checks if all enemies are destroyed
+             */
+            isAllDestroyed() {
+                for (const enemy of this.enemies) {
+                    if (enemy.alive) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            /**
+             * Clears the grid
+             */
+            reset() {
+                this.enemies = [];
+                this.createEnemies();
+                this.x = (CONFIG.CANVAS_WIDTH - this.gridWidth) / 2;
+                this.y = 50;
+                this.moveDirection = 1;
+                this.moveDownDistance = 0;
+            }
+        }
+
+        // Projectile class
+        /**
+         * Represents a laser projectile fired by player or enemies
+         */
+        class Projectile {
+            constructor(x, y, speed, owner) {
+                this.x = x;
+                this.y = y;
+                this.speed = speed;
+                this.owner = owner; // 'player' or 'enemy'
+                this.width = CONFIG.PROJECTILE_SIZE;
+                this.height = 10;
+            }
+
+            /**
+             * Updates projectile position
+             */
+            update() {
+                if (this.owner === 'player') {
+                    this.y -= this.speed;
+                } else {
+                    this.y += this.speed;
+                }
+            }
+
+            /**
+             * Checks if projectile is off screen
+             */
+            isOffScreen() {
+                return this.y < 0 || this.y > CONFIG.CANVAS_HEIGHT;
+            }
+
+            /**
+             * Renders the projectile
+             */
+            render(renderer) {
+                renderer.drawProjectile(this.x, this.y);
+            }
+        }
+
+        // Shield class
+        /**
+         * Represents destructible shields between player and enemies
+         */
+        class Shield {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = CONFIG.SHIELD_WIDTH;
+                this.height = CONFIG.SHIELD_HEIGHT;
+                this.health = CONFIG.SHIELD_HEALTH;
+            }
+
+            /**
+             * Reduces shield health
+             */
+            hit() {
+                this.health--;
+                return this.health <= 0;
+            }
+
+            /**
+             * Renders the shield
+             */
+            render(renderer) {
+                renderer.drawShield(this.x, this.y, this.health);
+            }
+        }
+
+        // HUD class
+        /**
+         * Manages the heads-up display showing score, lives, and level
+         */
+        class HUD {
+            constructor(renderer) {
+                this.renderer = renderer;
+                this.score = 0;
+                this.lives = 3;
+                this.level = 1;
+            }
+
+            /**
+             * Updates score
+             */
+            updateScore(points) {
+                this.score += points;
+            }
+
+            /**
+             * Updates lives
+             */
+            updateLives(lives) {
+                this.lives = lives;
+            }
+
+            /**
+             * Updates level
+             */
+            updateLevel(level) {
+                this.level = level;
+            }
+
+            /**
+             * Updates HUD display
+             */
+            updateDisplay() {
+                this.renderer.updateHUD(this.score, this.lives, this.level);
+            }
+
+            /**
+             * Resets HUD values
+             */
+            reset() {
+                this.score = 0;
+                this.lives = 3;
+                this.level = 1;
+            }
+        }
+
+        // Game class
+        /**
+         * Main game controller orchestrating all game systems
+         */
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('game-canvas');
+                this.canvas.width = CONFIG.CANVAS_WIDTH;
+                this.canvas.height = CONFIG.CANVAS_HEIGHT;
+                this.renderer = new Renderer(this.canvas);
+                this.input = new InputHandler();
+                this.state = GAME_STATE.START;
+                
+                this.player = null;
+                this.enemyGrid = new EnemyGrid();
+                this.projectiles = [];
+                this.shields = [];
+                this.hud = new HUD(this.renderer);
+                this.highScore = parseInt(localStorage.getItem('spaceInvadersHighScore') || '0');
+                
+                this.lastTime = 0;
+                this.deltaTime = 0;
+                
+                this.initGame();
+            }
+
+            /**
+             * Initializes the game systems
+             */
+            initGame() {
+                this.createShields();
+                this.resetGame();
+                this.setupEventListeners();
+                this.startScreen();
+            }
+
+            /**
+             * Sets up DOM event listeners
+             */
+            setupEventListeners() {
+                document.getElementById('start-button').addEventListener('click', () => {
+                    this.startGame();
+                });
+                
+                document.getElementById('restart-button').addEventListener('click', () => {
+                    this.restartGame();
+                });
+            }
+
+            /**
+             * Creates defensive shields
+             */
+            createShields() {
+                const shieldWidth = CONFIG.SHIELD_WIDTH;
+                const shieldHeight = CONFIG.SHIELD_HEIGHT;
+                const gap = CONFIG.SHIELD_GAP;
+                const totalWidth = (CONFIG.SHIELD_COUNT * shieldWidth) + ((CONFIG.SHIELD_COUNT - 1) * gap);
+                const startX = (CONFIG.CANVAS_WIDTH - totalWidth) / 2;
+                
+                for (let i = 0; i < CONFIG.SHIELD_COUNT; i++) {
+                    const x = startX + i * (shieldWidth + gap) + shieldWidth / 2;
+                    const y = CONFIG.CANVAS_HEIGHT - 100;
+                    this.shields.push(new Shield(x, y));
+                }
+            }
+
+            /**
+             * Starts the game from the start screen
+             */
+            startGame() {
+                this.state = GAME_STATE.PLAYING;
+                document.getElementById('start-screen').style.display = 'none';
+                document.getElementById('game-over-screen').style.display = 'none';
+                this.gameLoop();
+            }
+
+            /**
+             * Resets game state for a new round
+             */
+            resetGame() {
+                this.player = new Player(CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT - 50);
+                this.enemyGrid = new EnemyGrid();
+                this.projectiles = [];
+                this.hud.reset();
+                this.updateHighScore();
+            }
+
+            /**
+             * Restarts the game completely
+             */
+            restartGame() {
+                this.resetGame();
+                this.state = GAME_STATE.PLAYING;
+                document.getElementById('game-over-screen').style.display = 'none';
+                this.gameLoop();
+            }
+
+            /**
+             * Shows the start screen
+             */
+            startScreen() {
+                this.renderer.drawStartScreen();
+                this.state = GAME_STATE.START;
+            }
+
+            /**
+             * Handles game over condition
+             */
+            gameOver() {
+                if (this.hud.score > this.highScore) {
+                    this.highScore = this.hud.score;
+                    localStorage.setItem('spaceInvadersHighScore', this.highScore.toString());
+                }
+                this.renderer.drawGameOver(this.hud.score, this.highScore);
+                this.state = GAME_STATE.GAME_OVER;
+            }
+
+            /**
+             * Updates high score if needed
+             */
+            updateHighScore() {
+                if (this.hud.score > this.highScore) {
+                    this.highScore = this.hud.score;
+                    localStorage.setItem('spaceInvadersHighScore', this.highScore.toString());
+                }
+            }
+
+            /**
+             * Main game loop
+             */
+            gameLoop(currentTime) {
+                if (this.state === GAME_STATE.PLAYING) {
+                    this.deltaTime = currentTime - this.lastTime;
+                    this.lastTime = currentTime;
+                    
+                    this.handleInput();
+                    this.update();
+                    this.render();
+                }
+                
+                requestAnimationFrame((time) => this.gameLoop(time));
+            }
+
+            /**
+             * Handles all user input
+             */
+            handleInput() {
+                if (this.input.isLeftPressed()) {
+                    this.player.move('left');
+                }
+                
+                if (this.input.isRightPressed()) {
+                    this.player.move('right');
+                }
+                
+                if (this.input.isShootPressed()) {
+                    const projectile = this.player.shoot(Date.now());
+                    if (projectile) {
+                        this.projectiles.push(projectile);
+                    }
+                }
+                
+                if (this.input.isPausePressed()) {
+                    this.togglePause();
+                }
+            }
+
+            /**
+             * Toggles pause state
+             */
+            togglePause() {
+                if (this.state === GAME_STATE.PLAYING) {
+                    this.state = GAME_STATE.PAUSED;
+                } else if (this.state === GAME_STATE.PAUSED) {
+                    this.state = GAME_STATE.PLAYING;
+                }
+            }
+
+            /**
+             * Updates game logic
+             */
+            update() {
+                // Update enemy grid
+                this.enemyGrid.update(this.deltaTime);
+                this.enemyGrid.calculateSpeed(); // Update speed based on enemies remaining
+                
+                // Update projectiles
+                for (let i = this.projectiles.length - 1; i >= 0; i--) {
+                    this.projectiles[i].update();
+                    
+                    // Remove projectiles that go off-screen
+                    if (this.projectiles[i].isOffScreen()) {
+                        this.projectiles.splice(i, 1);
+                        continue;
+                    }
+                    
+                    // Handle collisions with shields
+                    for (let j = this.shields.length - 1; j >= 0; j--) {
+                        if (this.checkCollision(this.projectiles[i], this.shields[j])) {
+                            const destroyShield = this.shields[j].hit();
+                            if (destroyShield) {
+                                this.shields.splice(j, 1);
+                            }
+                            
+                            // Remove projectile
+                            this.projectiles.splice(i, 1);
+                            break;
+                        }
+                    }
+                    
+                    if (this.projectiles[i] && this.projectiles[i].owner === 'player') {
+                        // Check collision with enemies
+                        for (let k = 0; k < this.enemyGrid.enemies.length; k++) {
+                            if (this.enemyGrid.enemies[k].alive &&
+                                this.checkCollision(this.projectiles[i], this.enemyGrid.enemies[k])) {
+                                
+                                // Hit an enemy!
+                                this.enemyGrid.enemies[k].alive = false;
+                                this.hud.updateScore(10 * (this.enemyGrid.rows - this.enemyGrid.enemies[k].row));
+                                this.projectiles.splice(i, 1);
+                                
+                                // Check for victory
+                                if (this.enemyGrid.isAllDestroyed()) {
+                                    this.nextLevel();
+                                }
+                                break;
+                            }
+                        }
+                    } else if (this.projectiles[i] && this.projectiles[i].owner === 'enemy') {
+                        // Check collision with player
+                        if (this.checkCollision(this.projectiles[i], this.player)) {
+                            this.playerHit();
+                            this.projectiles.splice(i, 1);
+                        }
+                    }
+                }
+                
+                // Random enemy shooting
+                this.enemyShoot();
+                
+                // Check if enemies reached bottom
+                if (this.enemyGrid.hasReachedBottom()) {
+                    this.playerHit();
+                }
+                
+                // Update HUD
+                this.hud.updateDisplay();
+            }
+
+            /**
+             * Helper method for checking collisions
+             */
+            checkCollision(obj1, obj2) {
+                const x1 = obj1.x;
+                const y1 = obj1.y;
+                const width1 = obj1.width;
+                const height1 = obj1.height;
+                
+                const x2 = obj2.x;
+                const y2 = obj2.y;
+                const width2 = obj2.width;
+                const height2 = obj2.height;
+                
+                return x1 < x2 + width2 &&
+                       x1 + width1 > x2 &&
+                       y1 < y2 + height2 &&
+                       y1 + height1 > y2;
+            }
+
+            /**
+             * Handles enemy shooting
+             */
+            enemyShoot() {
+                // Only enemies that are still alive can shoot
+                const aliveEnemies = this.enemyGrid.enemies.filter(enemy => enemy.alive);
+                if (aliveEnemies.length === 0) return;
+                
+                // Chance for enemy to shoot
+                if (Math.random() < CONFIG.ENEMY_SHOOT_CHANCE * this.enemyGrid.countAliveEnemies() / 50) {
+                    // Choose a random alive enemy
+                    const shooter = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+                    const projectile = new Projectile(shooter.x, shooter.y + shooter.height / 2, CONFIG.ENEMY_PROJECTILE_SPEED, 'enemy');
+                    this.projectiles.push(projectile);
+                }
+            }
+
+            /**
+             * Moves to next level
+             */
+            nextLevel() {
+                this.hud.updateLevel(this.hud.level + 1);
+                this.enemyGrid.reset();
+            }
+
+            /**
+             * Handles player hit
+             */
+            playerHit() {
+                this.hud.updateLives(this.hud.lives - 1);
+                
+                if (this.hud.lives <= 0) {
+                    this.gameOver();
+                } else {
+                    // Reset player position after hit
+                    this.player = new Player(CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT - 50);
+                }
+            }
+
+            /**
+             * Renders all game elements
+             */
+            render() {
+                // Clear canvas
+                this.renderer.clear();
+                
+                // Render player
+                this.renderer.drawPlayer(this.player.x, this.player.y);
+                
+                // Render enemy grid
+                this.enemyGrid.render(this.renderer);
+                
+                // Render projectiles
+                for (const projectile of this.projectiles) {
+                    projectile.render(this.renderer);
+                }
+                
+                // Render shields
+                for (const shield of this.shields) {
+                    shield.render(this.renderer);
+                }
+            }
+        }
+
+        // Initialize the game when the page loads
+        window.addEventListener('load', () => {
+            new Game();
+        });
+    </script>
+</body>
+</html>

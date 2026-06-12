@@ -1,0 +1,83 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "share": "disabled",
+  "autoupdate": false,
+  "experimental": {
+    "openTelemetry": false
+  },
+  "provider": {
+    "model-prism": {
+      "options": {
+        "baseURL": "https://aic-bedrock.kollabproxy.de.dmz.tuhuk.de:8443/api/v1",
+        "apiKey": "pat_aaa9fee3aac9c23a1a26d4e8_8e5c991ba5f949cd5a6735ccc4c1ddac"
+      },
+      "models": {
+        "model-prism": {
+          "name": "Model Prism (Auto Router)"
+        },
+        "gpt-5.2": {
+          "name": "gpt-5.2"
+        },
+        "gpt-5.3-chat": {
+          "name": "gpt-5.3-chat"
+        },
+        "gpt-5.3-codex": {
+          "name": "gpt-5.3-codex"
+        },
+        "gpt-5.4": {
+          "name": "gpt-5.4"
+        },
+        "gpt-5.4-mini": {
+          "name": "gpt-5.4-mini"
+        },
+        "gpt-5.4-nano": {
+          "name": "gpt-5.4-nano"
+        },
+        "qwen.qwen3-235b-a22b-2507-v1:0": {
+          "name": "qwen.qwen3-235b-a22b-2507-v1:0"
+        },
+        "qwen.qwen3-coder-30b-a3b-v1:0": {
+          "name": "qwen.qwen3-coder-30b-a3b-v1:0"
+        },
+        "qwen.qwen3-32b-v1:0": {
+          "name": "qwen.qwen3-32b-v1:0"
+        },
+        "eu.amazon.nova-micro-v1:0": {
+          "name": "eu.amazon.nova-micro-v1:0"
+        },
+        "eu.amazon.nova-pro-v1:0": {
+          "name": "eu.amazon.nova-pro-v1:0"
+        },
+        "eu.anthropic.claude-sonnet-4-5-20250929-v1:0": {
+          "name": "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        },
+        "eu.anthropic.claude-haiku-4-5-20251001-v1:0": {
+          "name": "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+        },
+        "eu.amazon.nova-2-lite-v1:0": {
+          "name": "eu.amazon.nova-2-lite-v1:0"
+        },
+        "eu.anthropic.claude-opus-4-5-20251101-v1:0": {
+          "name": "eu.anthropic.claude-opus-4-5-20251101-v1:0"
+        },
+        "eu.anthropic.claude-opus-4-6-v1": {
+          "name": "eu.anthropic.claude-opus-4-6-v1"
+        },
+        "eu.anthropic.claude-sonnet-4-6": {
+          "name": "eu.anthropic.claude-sonnet-4-6"
+        },
+        "eu.anthropic.claude-opus-4-7": {
+          "name": "eu.anthropic.claude-opus-4-7"
+        },
+        "eu.anthropic.claude-opus-4-8": {
+          "name": "eu.anthropic.claude-opus-4-8"
+        }
+      }
+    }
+  },
+  "model": "model-prism/model-prism",
+  "compaction": {
+    "auto": true,
+    "prune": true
+  }
+}
