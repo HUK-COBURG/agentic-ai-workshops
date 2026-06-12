@@ -1,0 +1,81 @@
+:root {
+  --color-primary: #2f6c7a;
+  --color-accent: #ffed00;
+  --color-bg-dark: #001631;
+  --color-bg-darker: #000d1f;
+  --text: #eef3f8;
+  --text-subdued: rgba(238, 243, 248, 0.65);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: radial-gradient(ellipse at 20% -10%, #0a2a4d 0%, var(--color-bg-dark) 55%, var(--color-bg-darker) 100%);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.landing-wrap { max-width: 1060px; margin: 0 auto; padding: 56px 24px 80px; }
+
+.landing-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 64px; flex-wrap: wrap; }
+.landing-brand { display: flex; align-items: center; gap: 12px; }
+.landing-brand img { width: 40px; height: 40px; border-radius: 10px; }
+.landing-brand strong { font-size: 1.05rem; letter-spacing: 0.02em; }
+.landing-brand span { color: var(--color-accent); }
+
+.landing-actions { display: flex; gap: 10px; align-items: center; }
+.lang-toggle { display: flex; gap: 2px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 3px; }
+.lang-toggle button { background: transparent; border: none; color: var(--text-subdued); font-weight: 700; font-size: 0.75rem; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+.lang-toggle button.active { background: var(--color-accent); color: #001631; }
+
+.cms-link {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid rgba(255, 237, 0, 0.35); color: var(--color-accent);
+  background: rgba(255, 237, 0, 0.06);
+  padding: 8px 14px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; text-decoration: none;
+  transition: background 0.2s ease;
+}
+.cms-link:hover { background: rgba(255, 237, 0, 0.14); }
+
+.hero { text-align: center; margin-bottom: 72px; }
+.hero h1 { font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 800; line-height: 1.15; letter-spacing: -0.02em; }
+.hero h1 em { font-style: normal; color: var(--color-accent); }
+.hero p { margin: 18px auto 0; max-width: 560px; color: var(--text-subdued); font-size: 1.05rem; line-height: 1.6; }
+
+.course-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 22px; }
+
+.course-card {
+  position: relative;
+  display: flex; flex-direction: column; gap: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px; padding: 26px 24px 22px;
+  text-decoration: none; color: var(--text);
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+.course-card:hover { transform: translateY(-4px); border-color: rgba(255, 237, 0, 0.45); background: rgba(255, 255, 255, 0.06); }
+
+.course-card-top { display: flex; align-items: center; justify-content: space-between; }
+.course-emoji { font-size: 2rem; }
+.course-langs { display: flex; gap: 5px; }
+.course-langs span { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em; color: var(--text-subdued); border: 1px solid rgba(255,255,255,0.18); border-radius: 5px; padding: 2px 6px; }
+
+.course-card h2 { font-size: 1.25rem; font-weight: 750; line-height: 1.3; }
+.course-card p { color: var(--text-subdued); font-size: 0.88rem; line-height: 1.55; flex: 1; }
+
+.course-meta { display: flex; gap: 14px; font-size: 0.75rem; color: var(--text-subdued); }
+.course-meta b { color: var(--text); font-weight: 600; }
+
+.course-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.course-tags span { font-size: 0.68rem; font-weight: 600; color: var(--color-accent); background: rgba(255, 237, 0, 0.08); border: 1px solid rgba(255, 237, 0, 0.2); border-radius: 999px; padding: 3px 9px; }
+
+.course-cta { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 0.85rem; font-weight: 700; color: var(--color-accent); }
+.course-cta::after { content: '\2192'; transition: transform 0.2s ease; }
+.course-card:hover .course-cta::after { transform: translateX(4px); }
+
+.landing-footer { margin-top: 80px; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--text-subdued); font-size: 0.78rem; line-height: 1.8; }
+.landing-footer a { color: var(--text-subdued); text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+.landing-footer a:hover { color: var(--color-accent); }
+.footer-org img { width: 22px; height: 22px; border-radius: 5px; }
+.footer-sep { opacity: 0.5; }

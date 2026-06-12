@@ -1,0 +1,19 @@
+{
+  "name": "weisser-dev-courses",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "playwright": "^1.58.2",
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "mermaid": "^11.13.0"
+  }
+}

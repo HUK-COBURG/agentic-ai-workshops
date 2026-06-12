@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Arcade: Space Invaders</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #000;
+            font-family: 'Courier New', monospace;
+            color: #33ff33;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        canvas {
+            display: block;
+            background-color: #000;
+            border: 3px solid #33ff33;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            max-width: 90vw;
+            max-height: 90vh;
+        }
+
+        .info {
+            color: #33ff33;
+            font-size: 12px;
+            text-align: center;
+            line-height: 1.6;
+        }
+
+        .controls {
+            color: #999;
+            font-size: 11px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="info"><strong>🎮 SPACE INVADERS 1978 🎮</strong></div>
+        <canvas id="gameCanvas" width="840" height="600"></canvas>
+        <div class="controls">
+            <p><strong>Steuerung:</strong> ← → oder A/D bewegen | SPACE schießen | P/ESC pausieren | M stumm</p>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        const CONFIG = {
+            canvasWidth: 840,
+            canvasHeight: 600,
+            pixelSize: 3,
+
+            colors: {
+                bg: '#000000',
+                player: '#33ff33',
+                enemy: '#ffffff',
+                ufo: '#ff3333',
+                projectile: '#ffffff',
+                ufoProjectile: '#ffff00',
+                shield: '#33ff33',
+                text: '#33ff33',
+            },
+
+            gridMoveIntervalBase: 800,
+            gridMoveIntervalMin: 200,
+            gridStepPixels: 15,
+            gridDownPixels: 30,
+
+            invaderFireRatePerSecond: 0.5,
+            ufoSpawnChancePerSecond: 0.05,
+
+            scoreInvaderOctopus: 10,
+            scoreInvaderCrab: 20,
+            scoreInvaderSquid: 30,
+            scoreUfoMin: 50,
+            scoreUfoMax: 300,
+            extraLifeThreshold: 1000,
+
+            playerSpeed: 5,
+            playerProjectileSpeed: 6,
+            invaderProjectileSpeed: 4,
+            ufoSpeed: 2,
+            shieldHitRadius: 12,
+        };
+
+        class SoundEngine {
+            constructor() {
+                this.audioContext = null;
+                this.muted = false;
+                this.initialized = false;
+                this.marchBeatTones = [55, 52, 49, 46];
+                this.lastMarchBeatIndex = 0;
+            }
+
+            init() {
+                if (this.initialized) return;
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                this.initialized = true;
+            }
+
+            resume() {
+                if (this.audioContext?.state === 'suspended') {
+                    this.audioContext.resume();
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+            }
+
+            playMarchBeat() {
+                if (this.muted || !this.audioContext) return;
+
+                const tone = this.marchBeatTones[this.lastMarchBeatIndex];
+                this.lastMarchBeatIndex = (this.lastMarchBeatIndex + 1) % 4;
+
+                const osc = this.audioContext.createOscillator();
+                const gain = this.audioContext.createGain();
+
+                osc.connect(gain);
+                gain.connect(this.audioContext.destination);
+
+                osc.type = 'square';
+                osc.frequency.value = tone;
+
+                gain.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.15);
+
+                osc.start(this.audioContext.currentTime);
+                osc.stop(this.audioContext.currentTime + 0.15);
+            }
+
+            playPlayerShoot() {
+                if (this.muted || !this.audioContext) return;
+
+                const osc = this.audioContext.createOscillator();
+                const gain = this.audioContext.createGain();
+
+                osc.connect(gain);
+                gain.connect(this.audioContext.destination);
+
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(600, this.audioContext.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(200, this.audioContext.currentTime + 0.1);
+
+                gain.gain.setValueAtTime(0.15, this.audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+
+                osc.start(this.audioContext.currentTime);
+                osc.stop(this.audioContext.currentTime + 0.1);
+            }
+
+            playInvaderHit() {
+                if (this.muted || !this.audioContext) return;
+
+                const osc = this.audioContext.createOscillator();
+                const gain = this.audioContext.createGain();
+
+                osc.connect(gain);
+                gain.connect(this.audioContext.destination);
+
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(300, this.audioContext.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(100, this.audioContext.currentTime + 0.2);
+
+                gain.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
+
+                osc.start(this.audioContext.currentTime);
+                osc.stop(this.audioContext.currentTime + 0.2);
+            }
+
+            playPlayerDeath() {
+                if (this.muted || !this.audioContext) return;
+
+                const osc = this.audioContext.createOscillator();
+                const gain = this.audioContext.createGain();
+
+                osc.connect(gain);
+                gain.connect(this.audioContext.destination);
+
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(400, this.audioContext.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.5);
+
+                gain.gain.setValueAtTime(0.2, this.audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
+
+                osc.start(this.audioContext.currentTime);
+                osc.stop(this.audioContext.currentTime + 0.5);
+            }
+        }
+
+        class InputHandler {
+            constructor() {
+                this.keys = {};
+                this.touchPositions = { left: false, right: false };
+                this.setupKeyboardListeners();
+                this.setupTouchListeners();
+            }
+
+            setupKeyboardListeners() {
+                document.addEventListener('keydown', (e) => {
+                    this.keys[e.key.toLowerCase()] = true;
+                });
+                document.addEventListener('keyup', (e) => {
+                    this.keys[e.key.toLowerCase()] = false;
+                });
+            }
+
+            setupTouchListeners() {
+                const canvas = document.getElementById('gameCanvas');
+                const rect = canvas.getBoundingClientRect();
+
+                canvas.addEventListener('touchstart', (e) => {
+                    for (let touch of e.touches) {
+                        const relX = touch.clientX - rect.left;
+                        if (relX < rect.width / 2) {
+                            this.touchPositions.left = true;
+                        } else {
+                            this.touchPositions.right = true;
+                        }
+                    }
+                });
+
+                canvas.addEventListener('touchend', (e) => {
+                    if (e.touches.length === 0) {
+                        this.touchPositions.left = false;
+                        this.touchPositions.right = false;
+                    }
+                });
+            }
+
+            isMovingLeft() {
+                return this.keys['a'] || this.keys['arrowleft'] || this.touchPositions.left;
+            }
+
+            isMovingRight() {
+                return this.keys['d'] || this.keys['arrowright'] || this.touchPositions.right;
+            }
+
+            wasShotPressed() {
+                const pressed = this.keys[' '];
+                if (pressed) this.keys[' '] = false;
+                return pressed;
+            }
+
+            wasPausePressed() {
+                const pressed = this.keys['p'] || this.keys['escape'];
+                if (pressed) {
+                    this.keys['p'] = false;
+                    this.keys['escape'] = false;
+                }
+                return pressed;
+            }
+
+            wasStartPressed() {
+                const pressed = this.keys[' '];
+                if (pressed) this.keys[' '] = false;
+                return pressed;
+            }
+        }
+
+        const SPRITES = {
+            squid: [
+                [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+                [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+                [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+                [1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1],
+                [1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1],
+                [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+                [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+                [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+            ],
+            squidAlt: [
+                [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+                [1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1],
+                [1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0],
+                [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+                [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            ],
+            crab: [
+                [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+                [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+                [0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0],
+                [1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+                [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+                [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            ],
+            crabAlt: [
+                [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+                [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1],
+                [1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+                [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+                [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            ],
+            octopus: [
+                [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+                [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+                [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+                [1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0],
+                [0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0],
+            ],
+            octopusAlt: [
+                [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+                [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+                [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+                [1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+                [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+            ],
+            player: [
+                [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+                [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+                [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            ],
+            ufo: [
+                [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+                [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+                [1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+                [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+                [0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
+            ],
+            shield: [
+                [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+                [0, 0, 1, 1, 1, 1, 1, 1, 0, 0],
+                [0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 1, 1, 0, 0, 0, 0, 1, 1, 1],
+                [1, 1, 0, 0, 0, 0, 0, 0, 1, 1],
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            ],
+        };
+
+        class Player {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = SPRITES.player[0].length;
+                this.height = SPRITES.player.length;
+            }
+
+            update(input, deltaTime) {
+                if (input.isMovingLeft()) {
+                    this.x -= CONFIG.playerSpeed * deltaTime * 100;
+                } else if (input.isMovingRight()) {
+                    this.x += CONFIG.playerSpeed * deltaTime * 100;
+                }
+
+                if (this.x < 0) this.x = 0;
+                if (this.x + this.width * CONFIG.pixelSize > CONFIG.canvasWidth) {
+                    this.x = CONFIG.canvasWidth - this.width * CONFIG.pixelSize;
+                }
+            }
+        }
+
+        class Projectile {
+            constructor(x, y, vy, type = 'player') {
+                this.x = x;
+                this.y = y;
+                this.vy = vy;
+                this.type = type;
+                this.alive = true;
+            }
+
+            update(deltaTime) {
+                this.y += this.vy * deltaTime * 100;
+                if (this.y < 0 || this.y > CONFIG.canvasHeight) {
+                    this.alive = false;
+                }
+            }
+        }
+
+        class Enemy {
+            constructor(col, row, type) {
+                this.col = col;
+                this.row = row;
+                this.type = type;
+                this.alive = true;
+            }
+
+            getScreenPos(grid) {
+                const spriteWidth = SPRITES[this.type][0].length;
+                const spriteHeight = SPRITES[this.type].length;
+                return {
+                    x: grid.x + this.col * (spriteWidth + 2) * CONFIG.pixelSize,
+                    y: grid.y + this.row * (spriteHeight + 2) * CONFIG.pixelSize,
+                    width: spriteWidth,
+                    height: spriteHeight,
+                };
+            }
+
+            getScore() {
+                switch (this.type) {
+                    case 'squid': return CONFIG.scoreInvaderSquid;
+                    case 'crab': return CONFIG.scoreInvaderCrab;
+                    case 'octopus': return CONFIG.scoreInvaderOctopus;
+                    default: return 0;
+                }
+            }
+        }
+
+        class EnemyGrid {
+            constructor() {
+                this.x = 60;
+                this.y = 50;
+                this.vx = 1;
+                this.enemies = [];
+                this.animFrame = 0;
+                this.moveInterval = CONFIG.gridMoveIntervalBase;
+
+                this.createGrid();
+            }
+
+            createGrid() {
+                this.enemies = [];
+                const types = ['squid', 'crab', 'crab', 'octopus', 'octopus'];
+
+                for (let row = 0; row < 5; row++) {
+                    for (let col = 0; col < 11; col++) {
+                        this.enemies.push(new Enemy(col, row, types[row]));
+                    }
+                }
+            }
+
+            stepMove() {
+                const canMove = this.canMoveSideways();
+
+                if (canMove) {
+                    this.x += this.vx * CONFIG.gridStepPixels;
+                } else {
+                    this.y += CONFIG.gridDownPixels;
+                    this.vx *= -1;
+                }
+
+                this.animFrame = this.animFrame === 0 ? 1 : 0;
+
+                const aliveCount = this.enemies.filter((e) => e.alive).length;
+                const deadCount = this.enemies.length - aliveCount;
+                const speedFactor = Math.max(0.3, 1 - deadCount / 20);
+                this.moveInterval = Math.max(
+                    CONFIG.gridMoveIntervalMin,
+                    CONFIG.gridMoveIntervalBase * speedFactor
+                );
+            }
+
+            canMoveSideways() {
+                let minX = Infinity,
+                    maxX = -Infinity;
+                let hasAlive = false;
+
+                for (let enemy of this.enemies) {
+                    if (enemy.alive) {
+                        hasAlive = true;
+                        const pos = enemy.getScreenPos(this);
+                        minX = Math.min(minX, pos.x);
+                        maxX = Math.max(maxX, pos.x + pos.width * CONFIG.pixelSize);
+                    }
+                }
+
+                if (!hasAlive) return true;
+
+                if (this.vx > 0) {
+                    return maxX + CONFIG.gridStepPixels < CONFIG.canvasWidth - 20;
+                } else {
+                    return minX - CONFIG.gridStepPixels > 20;
+                }
+            }
+
+            getAliveEnemies() {
+                return this.enemies.filter((e) => e.alive);
+            }
+
+            getLowestInColumn(col) {
+                let lowest = null;
+                for (let enemy of this.enemies) {
+                    if (enemy.alive && enemy.col === col) {
+                        if (!lowest || enemy.row > lowest.row) {
+                            lowest = enemy;
+                        }
+                    }
+                }
+                return lowest;
+            }
+
+            reset() {
+                this.x = 60;
+                this.y = 50;
+                this.vx = 1;
+                this.animFrame = 0;
+                this.moveInterval = CONFIG.gridMoveIntervalBase;
+                this.createGrid();
+            }
+        }
+
+        class UFO {
+            constructor() {
+                this.x = -50;
+                this.y = 25;
+                this.vx = CONFIG.ufoSpeed;
+                this.alive = true;
+            }
+
+            update(deltaTime) {
+                this.x += this.vx * deltaTime * 100;
+                if (this.x > CONFIG.canvasWidth + 50) {
+                    this.alive = false;
+                }
+            }
+
+            getRandomScore() {
+                return Math.floor(
+                    Math.random() * (CONFIG.scoreUfoMax - CONFIG.scoreUfoMin) +
+                        CONFIG.scoreUfoMin
+                );
+            }
+        }
+
+        class Shield {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.pixels = SPRITES.shield.map((row) => [...row]);
+            }
+
+            damage(x, y) {
+                const localX = Math.floor((x - this.x) / CONFIG.pixelSize);
+                const localY = Math.floor((y - this.y) / CONFIG.pixelSize);
+                const radius = CONFIG.shieldHitRadius / CONFIG.pixelSize;
+
+                for (let dy = -radius; dy <= radius; dy++) {
+                    for (let dx = -radius; dx <= radius; dx++) {
+                        const px = localX + dx;
+                        const py = localY + dy;
+
+                        if (
+                            px >= 0 &&
+                            px < this.pixels[0].length &&
+                            py >= 0 &&
+                            py < this.pixels.length
+                        ) {
+                            const distSq = dx * dx + dy * dy;
+                            if (distSq <= radius * radius) {
+                                this.pixels[py][px] = 0;
+                            }
+                        }
+                    }
+                }
+            }
+
+            isDestroyed() {
+                return this.pixels.every((row) => row.every((p) => p === 0));
+            }
+        }
+
+        class GameState {
+            constructor() {
+                this.score = 0;
+                this.highScore = localStorage.getItem('spaceinvaders_highscore') || 0;
+                this.lives = 3;
+                this.wave = 1;
+                this.state = 'start';
+                this.nextExtraLifeScore = CONFIG.extraLifeThreshold;
+            }
+
+            addScore(points) {
+                this.score += points;
+                if (this.score >= this.nextExtraLifeScore) {
+                    this.lives++;
+                    this.nextExtraLifeScore += CONFIG.extraLifeThreshold;
+                }
+
+                if (this.score > this.highScore) {
+                    this.highScore = this.score;
+                    localStorage.setItem('spaceinvaders_highscore', this.highScore);
+                }
+            }
+
+            reset() {
+                this.score = 0;
+                this.lives = 3;
+                this.wave = 1;
+                this.state = 'running';
+                this.nextExtraLifeScore = CONFIG.extraLifeThreshold;
+            }
+        }
+
+        class Renderer {
+            constructor(ctx) {
+                this.ctx = ctx;
+                this.ctx.imageSmoothingEnabled = false;
+            }
+
+            clear() {
+                this.ctx.fillStyle = CONFIG.colors.bg;
+                this.ctx.fillRect(0, 0, CONFIG.canvasWidth, CONFIG.canvasHeight);
+            }
+
+            drawSprite(sprite, x, y, color) {
+                this.ctx.fillStyle = color;
+                for (let row = 0; row < sprite.length; row++) {
+                    for (let col = 0; col < sprite[row].length; col++) {
+                        if (sprite[row][col]) {
+                            this.ctx.fillRect(
+                                x + col * CONFIG.pixelSize,
+                                y + row * CONFIG.pixelSize,
+                                CONFIG.pixelSize,
+                                CONFIG.pixelSize
+                            );
+                        }
+                    }
+                }
+            }
+
+            drawPlayer(player) {
+                this.drawSprite(SPRITES.player, player.x, player.y, CONFIG.colors.player);
+            }
+
+            drawEnemyGrid(grid) {
+                for (let enemy of grid.enemies) {
+                    if (!enemy.alive) continue;
+
+                    const pos = enemy.getScreenPos(grid);
+                    const spriteKey = enemy.type + (grid.animFrame === 1 ? 'Alt' : '');
+                    this.drawSprite(SPRITES[spriteKey], pos.x, pos.y, CONFIG.colors.enemy);
+                }
+            }
+
+            drawProjectiles(projectiles) {
+                for (let proj of projectiles) {
+                    if (!proj.alive) continue;
+
+                    this.ctx.fillStyle = proj.type === 'player'
+                        ? CONFIG.colors.projectile
+                        : CONFIG.colors.ufoProjectile;
+
+                    this.ctx.fillRect(proj.x, proj.y, CONFIG.pixelSize, 4 * CONFIG.pixelSize);
+                }
+            }
+
+            drawUFO(ufo) {
+                if (!ufo || !ufo.alive) return;
+                this.drawSprite(SPRITES.ufo, ufo.x, ufo.y, CONFIG.colors.ufo);
+            }
+
+            drawShields(shields) {
+                for (let shield of shields) {
+                    for (let row = 0; row < shield.pixels.length; row++) {
+                        for (let col = 0; col < shield.pixels[row].length; col++) {
+                            if (shield.pixels[row][col]) {
+                                this.ctx.fillStyle = CONFIG.colors.shield;
+                                this.ctx.fillRect(
+                                    shield.x + col * CONFIG.pixelSize,
+                                    shield.y + row * CONFIG.pixelSize,
+                                    CONFIG.pixelSize,
+                                    CONFIG.pixelSize
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            drawHUD(gameState) {
+                this.ctx.fillStyle = CONFIG.colors.text;
+                this.ctx.font = '12px "Courier New", monospace';
+                this.ctx.textAlign = 'left';
+
+                this.ctx.fillText(`SCORE: ${gameState.score}`, 10, 12);
+
+                this.ctx.textAlign = 'right';
+                this.ctx.fillText(`LIVES: ${gameState.lives}`, CONFIG.canvasWidth - 10, 12);
+
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText(`WAVE ${gameState.wave}`, CONFIG.canvasWidth / 2, 12);
+            }
+
+            drawPause() {
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                this.ctx.fillRect(0, 0, CONFIG.canvasWidth, CONFIG.canvasHeight);
+
+                this.ctx.fillStyle = CONFIG.colors.text;
+                this.ctx.font = 'bold 24px "Courier New", monospace';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText('PAUSED', CONFIG.canvasWidth / 2, CONFIG.canvasHeight / 2);
+            }
+
+            drawStartScreen(gameState) {
+                this.ctx.fillStyle = CONFIG.colors.bg;
+                this.ctx.fillRect(0, 0, CONFIG.canvasWidth, CONFIG.canvasHeight);
+
+                this.ctx.fillStyle = CONFIG.colors.text;
+                this.ctx.font = 'bold 32px "Courier New", monospace';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText('SPACE INVADERS', CONFIG.canvasWidth / 2, 100);
+
+                this.ctx.font = '14px "Courier New", monospace';
+                this.ctx.fillText('Press SPACE to Start', CONFIG.canvasWidth / 2, 200);
+
+                this.ctx.font = '12px "Courier New", monospace';
+                this.ctx.fillStyle = '#999';
+                this.ctx.fillText('Pfeiltasten/A+D | Space schießen | P pausieren | M stumm',
+                    CONFIG.canvasWidth / 2, 280);
+
+                if (gameState.highScore > 0) {
+                    this.ctx.fillStyle = CONFIG.colors.text;
+                    this.ctx.fillText(
+                        `HIGH SCORE: ${gameState.highScore}`,
+                        CONFIG.canvasWidth / 2,
+                        400
+                    );
+                }
+            }
+
+            drawGameOver(gameState) {
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                this.ctx.fillRect(0, 0, CONFIG.canvasWidth, CONFIG.canvasHeight);
+
+                this.ctx.fillStyle = CONFIG.colors.text;
+                this.ctx.font = 'bold 32px "Courier New", monospace';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText('GAME OVER', CONFIG.canvasWidth / 2, CONFIG.canvasHeight / 2 - 60);
+
+                this.ctx.font = '18px "Courier New", monospace';
+                this.ctx.fillText(`FINAL SCORE: ${gameState.score}`, CONFIG.canvasWidth / 2,
+                    CONFIG.canvasHeight / 2);
+                this.ctx.fillText(`HIGH SCORE: ${gameState.highScore}`, CONFIG.canvasWidth / 2,
+                    CONFIG.canvasHeight / 2 + 40);
+
+                this.ctx.font = '14px "Courier New", monospace';
+                this.ctx.fillStyle = '#33ff33';
+                this.ctx.fillText('Press SPACE to Restart', CONFIG.canvasWidth / 2,
+                    CONFIG.canvasHeight / 2 + 100);
+            }
+        }
+
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+
+                this.gameState = new GameState();
+                this.input = new InputHandler();
+                this.soundEngine = new SoundEngine();
+                this.renderer = new Renderer(this.ctx);
+
+                this.player = null;
+                this.enemyGrid = null;
+                this.shields = [];
+                this.projectiles = [];
+                this.ufo = null;
+
+                this.lastFrameTime = Date.now();
+                this.nextGridMoveTime = 0;
+                this.nextInvaderFireTime = 0;
+                this.nextUfoSpawnTime = 0;
+
+                window.addEventListener('resize', () => this.resize());
+                this.resize();
+
+                this.gameLoop();
+            }
+
+            resize() {
+                const maxWidth = window.innerWidth * 0.9;
+                const maxHeight = window.innerHeight * 0.8;
+                const ratio = CONFIG.canvasWidth / CONFIG.canvasHeight;
+
+                let width = maxWidth;
+                let height = width / ratio;
+
+                if (height > maxHeight) {
+                    height = maxHeight;
+                    width = height * ratio;
+                }
+
+                this.canvas.style.width = width + 'px';
+                this.canvas.style.height = height + 'px';
+            }
+
+            start() {
+                this.gameState.reset();
+                this.player = new Player(
+                    CONFIG.canvasWidth / 2 - (SPRITES.player[0].length * CONFIG.pixelSize) / 2,
+                    CONFIG.canvasHeight - 60
+                );
+                this.enemyGrid = new EnemyGrid();
+                this.shields = [];
+                const shieldSpacing = (CONFIG.canvasWidth - 120) / 3;
+                for (let i = 0; i < 4; i++) {
+                    this.shields.push(new Shield(60 + i * shieldSpacing, CONFIG.canvasHeight - 150));
+                }
+                this.projectiles = [];
+                this.ufo = null;
+
+                this.nextGridMoveTime = Date.now() + this.enemyGrid.moveInterval;
+                this.nextInvaderFireTime = Date.now() + 500;
+                this.nextUfoSpawnTime = Date.now() + Math.random() * 10000 + 15000;
+
+                this.lastFrameTime = Date.now();
+            }
+
+            gameLoop = () => {
+                const now = Date.now();
+                const deltaTime = Math.min((now - this.lastFrameTime) / 1000, 0.016);
+                this.lastFrameTime = now;
+
+                if (this.input.wasPausePressed()) {
+                    this.gameState.state =
+                        this.gameState.state === 'paused' ? 'running' : 'paused';
+                }
+
+                if (this.gameState.state === 'start' && this.input.wasStartPressed()) {
+                    this.soundEngine.init();
+                    this.soundEngine.resume();
+                    this.start();
+                }
+
+                if (this.gameState.state === 'gameover' && this.input.wasStartPressed()) {
+                    this.soundEngine.init();
+                    this.soundEngine.resume();
+                    this.start();
+                }
+
+                if (this.input.keys['m'] || this.input.keys['M']) {
+                    this.soundEngine.toggleMute();
+                    this.input.keys['m'] = false;
+                    this.input.keys['M'] = false;
+                }
+
+                if (this.gameState.state === 'running') {
+                    this.update(now, deltaTime);
+                }
+
+                this.render();
+
+                requestAnimationFrame(this.gameLoop);
+            };
+
+            update(now, deltaTime) {
+                this.player.update(this.input, deltaTime);
+
+                if (now >= this.nextGridMoveTime) {
+                    this.enemyGrid.stepMove();
+                    this.soundEngine.playMarchBeat();
+                    this.nextGridMoveTime = now + this.enemyGrid.moveInterval;
+                }
+
+                this.projectiles = this.projectiles.filter((p) => {
+                    p.update(deltaTime);
+                    return p.alive;
+                });
+
+                if (this.input.wasShotPressed()) {
+                    const centerX = this.player.x + (SPRITES.player[0].length * CONFIG.pixelSize) / 2;
+                    this.projectiles.push(
+                        new Projectile(centerX, this.player.y, -CONFIG.playerProjectileSpeed, 'player')
+                    );
+                    this.soundEngine.playPlayerShoot();
+                }
+
+                if (now >= this.nextInvaderFireTime) {
+                    const col = Math.floor(Math.random() * 11);
+                    const shooter = this.enemyGrid.getLowestInColumn(col);
+
+                    if (shooter && shooter.alive) {
+                        const pos = shooter.getScreenPos(this.enemyGrid);
+                        const projX = pos.x + (pos.width * CONFIG.pixelSize) / 2;
+                        const projY = pos.y + pos.height * CONFIG.pixelSize;
+
+                        this.projectiles.push(
+                            new Projectile(projX, projY, CONFIG.invaderProjectileSpeed, 'invader')
+                        );
+                    }
+
+                    this.nextInvaderFireTime = now + 1000 + Math.random() * 1500;
+                }
+
+                if (!this.ufo || !this.ufo.alive) {
+                    if (now >= this.nextUfoSpawnTime && Math.random() < 0.3) {
+                        this.ufo = new UFO();
+                        this.nextUfoSpawnTime = now + 20000 + Math.random() * 20000;
+                    }
+                }
+
+                if (this.ufo && this.ufo.alive) {
+                    this.ufo.update(deltaTime);
+                }
+
+                this.checkCollisions();
+
+                if (this.enemyGrid.getAliveEnemies().length === 0) {
+                    this.nextWave();
+                }
+
+                for (let enemy of this.enemyGrid.enemies) {
+                    if (enemy.alive) {
+                        const pos = enemy.getScreenPos(this.enemyGrid);
+                        if (pos.y + pos.height * CONFIG.pixelSize >= this.player.y) {
+                            this.gameState.lives = 0;
+                            this.gameState.state = 'gameover';
+                            return;
+                        }
+                    }
+                }
+            }
+
+            checkCollisions() {
+                for (let i = this.projectiles.length - 1; i >= 0; i--) {
+                    const proj = this.projectiles[i];
+                    if (proj.type !== 'player' || !proj.alive) continue;
+
+                    for (let enemy of this.enemyGrid.enemies) {
+                        if (!enemy.alive) continue;
+
+                        const pos = enemy.getScreenPos(this.enemyGrid);
+                        if (
+                            this.rectIntersect(
+                                proj.x,
+                                proj.y,
+                                CONFIG.pixelSize,
+                                4 * CONFIG.pixelSize,
+                                pos.x,
+                                pos.y,
+                                pos.width * CONFIG.pixelSize,
+                                pos.height * CONFIG.pixelSize
+                            )
+                        ) {
+                            enemy.alive = false;
+                            proj.alive = false;
+                            this.gameState.addScore(enemy.getScore());
+                            this.soundEngine.playInvaderHit();
+                            break;
+                        }
+                    }
+
+                    if (this.ufo && this.ufo.alive) {
+                        if (
+                            this.rectIntersect(
+                                proj.x,
+                                proj.y,
+                                CONFIG.pixelSize,
+                                4 * CONFIG.pixelSize,
+                                this.ufo.x,
+                                this.ufo.y,
+                                SPRITES.ufo[0].length * CONFIG.pixelSize,
+                                SPRITES.ufo.length * CONFIG.pixelSize
+                            )
+                        ) {
+                            this.gameState.addScore(this.ufo.getRandomScore());
+                            this.ufo.alive = false;
+                            proj.alive = false;
+                            this.soundEngine.playInvaderHit();
+                        }
+                    }
+
+                    for (let shield of this.shields) {
+                        if (
+                            this.rectIntersect(
+                                proj.x,
+                                proj.y,
+                                CONFIG.pixelSize,
+                                4 * CONFIG.pixelSize,
+                                shield.x,
+                                shield.y,
+                                SPRITES.shield[0].length * CONFIG.pixelSize,
+                                SPRITES.shield.length * CONFIG.pixelSize
+                            )
+                        ) {
+                            shield.damage(proj.x + CONFIG.pixelSize / 2, proj.y);
+                            proj.alive = false;
+                        }
+                    }
+                }
+
+                for (let i = this.projectiles.length - 1; i >= 0; i--) {
+                    const proj = this.projectiles[i];
+                    if (proj.type !== 'invader' || !proj.alive) continue;
+
+                    if (
+                        this.rectIntersect(
+                            proj.x,
+                            proj.y,
+                            CONFIG.pixelSize,
+                            4 * CONFIG.pixelSize,
+                            this.player.x,
+                            this.player.y,
+                            SPRITES.player[0].length * CONFIG.pixelSize,
+                            SPRITES.player.length * CONFIG.pixelSize
+                        )
+                    ) {
+                        this.gameState.lives--;
+                        proj.alive = false;
+                        this.soundEngine.playPlayerDeath();
+
+                        if (this.gameState.lives <= 0) {
+                            this.gameState.state = 'gameover';
+                        } else {
+                            this.player.x =
+                                CONFIG.canvasWidth / 2 -
+                                (SPRITES.player[0].length * CONFIG.pixelSize) / 2;
+                        }
+                    }
+
+                    for (let shield of this.shields) {
+                        if (
+                            this.rectIntersect(
+                                proj.x,
+                                proj.y,
+                                CONFIG.pixelSize,
+                                4 * CONFIG.pixelSize,
+                                shield.x,
+                                shield.y,
+                                SPRITES.shield[0].length * CONFIG.pixelSize,
+                                SPRITES.shield.length * CONFIG.pixelSize
+                            )
+                        ) {
+                            shield.damage(proj.x + CONFIG.pixelSize / 2, proj.y);
+                            proj.alive = false;
+                        }
+                    }
+                }
+
+                this.shields = this.shields.filter((s) => !s.isDestroyed());
+            }
+
+            rectIntersect(x1, y1, w1, h1, x2, y2, w2, h2) {
+                return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
+            }
+
+            nextWave() {
+                this.gameState.wave++;
+                this.enemyGrid.reset();
+                this.shields = [];
+                const shieldSpacing = (CONFIG.canvasWidth - 120) / 3;
+                for (let i = 0; i < 4; i++) {
+                    this.shields.push(new Shield(60 + i * shieldSpacing, CONFIG.canvasHeight - 150));
+                }
+            }
+
+            render() {
+                this.renderer.clear();
+
+                if (this.gameState.state === 'start') {
+                    this.renderer.drawStartScreen(this.gameState);
+                } else if (this.gameState.state === 'gameover') {
+                    this.renderer.drawEnemyGrid(this.enemyGrid);
+                    this.renderer.drawPlayer(this.player);
+                    this.renderer.drawProjectiles(this.projectiles);
+                    this.renderer.drawShields(this.shields);
+                    this.renderer.drawUFO(this.ufo);
+                    this.renderer.drawHUD(this.gameState);
+                    this.renderer.drawGameOver(this.gameState);
+                } else {
+                    this.renderer.drawEnemyGrid(this.enemyGrid);
+                    this.renderer.drawPlayer(this.player);
+                    this.renderer.drawProjectiles(this.projectiles);
+                    this.renderer.drawShields(this.shields);
+                    this.renderer.drawUFO(this.ufo);
+                    this.renderer.drawHUD(this.gameState);
+
+                    if (this.gameState.state === 'paused') {
+                        this.renderer.drawPause();
+                    }
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            new Game();
+        });
+    </script>
+</body>
+</html>
